@@ -11,7 +11,9 @@ import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nuxeo.ecm.platform.oauth2.openid.OpenIDConnectProviderRegistry;
+import org.nuxeo.ecm.platform.oauth2.openid.RedirectUriResolverHelper;
 import org.nuxeo.ecm.platform.oauth2.openid.auth.OpenIDConnectAuthenticator;
+import org.nuxeo.ecm.platform.web.common.vh.VirtualHostHelper;
 import org.nuxeo.runtime.api.Framework;
 
 public class CustomOpenIDConnectAuthenticator extends OpenIDConnectAuthenticator {
@@ -32,6 +34,7 @@ public class CustomOpenIDConnectAuthenticator extends OpenIDConnectAuthenticator
             }
         }
         try {
+            setRequestUrlAsAnAttribute(request);
             response.sendRedirect(Framework.getService(OpenIDConnectProviderRegistry.class)
                                            .getProvider("NuxeoLibrary")
                                            .computeUrl(request, baseURL));
@@ -46,6 +49,25 @@ public class CustomOpenIDConnectAuthenticator extends OpenIDConnectAuthenticator
     @Override
     public Boolean needLoginPrompt(HttpServletRequest httpRequest) {
         return true;
+    }
+
+    protected void setRequestUrlAsAnAttribute(HttpServletRequest request) {
+        /**
+         * the REDIRECT_URI_SESSION_ATTRIBUTE is inspected later and if its null is inialized with: redirectUri =
+         * VirtualHostHelper.getBaseURL(request) + LoginScreenHelper.getStartupPagePath() + "?" + "" + "provider=" +
+         * openIDConnectProvider.oauth2Provider.getServiceName() + "&forceAnonymousLogin=true";
+         **/
+
+        // you have to pay attention to check that this is correct and find a better way to concatenate these
+        String baseURL = VirtualHostHelper.getServerURL(request);
+        if (baseURL.endsWith("/") && request.getRequestURI().startsWith("/")) {
+            baseURL = baseURL.substring(0, baseURL.length() - 2);
+        }
+
+        String redirectUri = baseURL + request.getRequestURI() + "?" + ""
+                + "provider=NuxeoLibrary&forceAnonymousLogin=true";
+        request.getSession().setAttribute(RedirectUriResolverHelper.REDIRECT_URI_SESSION_ATTRIBUTE, redirectUri);
+
     }
 
 }
