@@ -1,12 +1,12 @@
 package oauth.tests;
 
-import static org.nuxeo.ecm.platform.ui.web.auth.NXAuthConstants.ERROR_USERNAME_MISSING;
-import static org.nuxeo.ecm.platform.ui.web.auth.NXAuthConstants.FORM_SUBMITTED_MARKER;
 import static org.nuxeo.ecm.platform.ui.web.auth.NXAuthConstants.LOGIN_ERROR;
 import static org.nuxeo.ecm.platform.ui.web.auth.NXAuthConstants.PASSWORD_KEY;
 import static org.nuxeo.ecm.platform.ui.web.auth.NXAuthConstants.USERNAME_KEY;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Optional;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.Cookie;
@@ -73,28 +73,52 @@ public class CustomOpenIDConnectAuthenticator extends OpenIDConnectAuthenticator
     public UserIdentificationInfo handleRetrieveIdentity(HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
         // lets see if this an authentication request that does not need SSO
-        if (!"form".equals(httpRequest.getParameter("authMethod"))) {
+        if (!"form".equals(httpRequest.getParameter("authMethod")) && getCookie(httpRequest, "authForm") == null) {
             return super.handleRetrieveIdentity(httpRequest, httpResponse);
         }
-        // if not we authenticate with user and password
-        // Only accept POST requests
+        String userName = null;
+        String password = null;
         String method = httpRequest.getMethod();
-        if (!"POST".equals(method)) {
+        if ("POST".equals(method)) {
             log.debug("Request method is " + method + ", only accepting POST");
-            return null;
-        }
 
-        log.debug("Looking for user/password in the request");
-        String userName = httpRequest.getParameter(usernameKey);
-        String password = httpRequest.getParameter(passwordKey);
-        // NXP-2650: ugly hack to check if form was submitted
-        if (httpRequest.getParameter(FORM_SUBMITTED_MARKER) != null && (userName == null || userName.length() == 0)) {
-            httpRequest.setAttribute(LOGIN_ERROR, ERROR_USERNAME_MISSING);
+            log.debug("Looking for user/password in the request");
+            userName = httpRequest.getParameter(usernameKey);
+            password = httpRequest.getParameter(passwordKey);
+            setCookie(httpResponse, "authForm", "form");
+            setCookie(httpResponse, usernameKey, userName);
+            setCookie(httpResponse, passwordKey, password);
+
+        }
+        if ("GET".equals(method)) {
+            userName = getCookie(httpRequest, usernameKey);
+            password = getCookie(httpRequest, passwordKey);
         }
         if (userName == null || userName.length() == 0) {
             return null;
         }
         return new UserIdentificationInfo(userName, password);
+    }
+
+    protected void setCookie(HttpServletResponse httpResponse, String name, String value) {
+        Cookie cookie = new Cookie(name, value);
+        cookie.setPath("/");
+        // cookie.setSecure(true); <--- TO ENABLE FOR PROD !! ON HTTPS
+        cookie.setMaxAge(5);
+        httpResponse.addCookie(cookie);
+
+    }
+
+    protected String getCookie(HttpServletRequest httpRequest, String name) {
+        Cookie[] cookies = httpRequest.getCookies();
+        if (cookies != null) {
+            Optional<Cookie> cookie = Arrays.stream(cookies)
+                                            .filter(element -> element.getName().equalsIgnoreCase(name))
+                                            .findAny();
+            if (cookie.isPresent())
+                return cookie.get().getValue();
+        }
+        return null;
     }
 
 }
