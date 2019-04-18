@@ -20,6 +20,8 @@ import org.nuxeo.ecm.platform.oauth2.openid.OpenIDConnectProviderRegistry;
 import org.nuxeo.ecm.platform.oauth2.openid.auth.OpenIDConnectAuthenticator;
 import org.nuxeo.ecm.platform.ui.web.auth.NXAuthConstants;
 import org.nuxeo.runtime.api.Framework;
+import org.nuxeo.runtime.kv.KeyValueService;
+import org.nuxeo.runtime.kv.KeyValueStore;
 
 public class CustomOpenIDConnectAuthenticator extends OpenIDConnectAuthenticator {
 
@@ -28,6 +30,10 @@ public class CustomOpenIDConnectAuthenticator extends OpenIDConnectAuthenticator
     protected String usernameKey = USERNAME_KEY;
 
     protected String passwordKey = PASSWORD_KEY;
+
+    public static final String SESSION_CACHE_NAME = "tbwaSession-cache";
+
+    public static final String SESSION_CACHE_DEFAULT_TTL = "5"; // 5 seconds
 
     @Override
     public Boolean handleLoginPrompt(HttpServletRequest request, HttpServletResponse response, String baseURL) {
@@ -87,16 +93,17 @@ public class CustomOpenIDConnectAuthenticator extends OpenIDConnectAuthenticator
             password = httpRequest.getParameter(passwordKey);
             setCookie(httpResponse, "authForm", "form");
             setCookie(httpResponse, usernameKey, userName);
-            setCookie(httpResponse, passwordKey, password);
+            cacheUserIndentifion(userName, password);
 
         }
         if ("GET".equals(method)) {
             userName = getCookie(httpRequest, usernameKey);
-            password = getCookie(httpRequest, passwordKey);
+            password = getPasswordFromCache(userName);
         }
         if (userName == null || userName.length() == 0) {
             return null;
         }
+
         return new UserIdentificationInfo(userName, password);
     }
 
@@ -121,4 +128,18 @@ public class CustomOpenIDConnectAuthenticator extends OpenIDConnectAuthenticator
         return null;
     }
 
+    protected void cacheUserIndentifion(String username, String password) {
+        KeyValueStore tbwaSessionCache = Framework.getService(KeyValueService.class)
+                                                  .getKeyValueStore(SESSION_CACHE_NAME);
+        if (tbwaSessionCache.getString(username) == null) {
+            tbwaSessionCache.put(username, password, Long.parseLong(SESSION_CACHE_DEFAULT_TTL));
+        }
+    }
+
+    protected String getPasswordFromCache(String username) {
+        KeyValueStore tbwaSessionCache = Framework.getService(KeyValueService.class)
+                                                  .getKeyValueStore(SESSION_CACHE_NAME);
+        return tbwaSessionCache.getString(username);
+
+    }
 }
